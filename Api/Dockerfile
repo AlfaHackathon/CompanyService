@@ -9,9 +9,9 @@ ARG BUILD_CONFIGURATION=Release
 ARG GITHUB_TOKEN
 WORKDIR /src
 
-# company-service ссылается на локальный проект MongoContext, поэтому контекст сборки — корень репо
+# CompanyService ссылается на локальный проект MongoContext, поэтому контекст сборки — корень репо
 COPY ["MongoContext/AlfaHackaton.MongoContext/AlfaHackaton.MongoContext.csproj", "MongoContext/AlfaHackaton.MongoContext/"]
-COPY ["company-service/CompanyService/CompanyService.csproj", "company-service/CompanyService/"]
+COPY ["CompanyService/Api/Api.csproj", "CompanyService/Api/"]
 RUN if [ -n "$GITHUB_TOKEN" ]; then \
         dotnet nuget add source "https://nuget.pkg.github.com/AlfaHackathon/index.json" \
             --name github \
@@ -19,16 +19,16 @@ RUN if [ -n "$GITHUB_TOKEN" ]; then \
             --password "$GITHUB_TOKEN" \
             --store-password-in-clear-text; \
     fi
-RUN dotnet restore "company-service/CompanyService/CompanyService.csproj"
+RUN dotnet restore "CompanyService/Api/Api.csproj"
 COPY . .
-WORKDIR "/src/company-service/CompanyService"
-RUN dotnet build "./CompanyService.csproj" -c $BUILD_CONFIGURATION -o /app/build
+WORKDIR "/src/CompanyService/Api"
+RUN dotnet build "./Api.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "./CompanyService.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "./Api.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
 
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
-ENTRYPOINT ["dotnet", "CompanyService.dll"]
+ENTRYPOINT ["dotnet", "Api.dll"]
