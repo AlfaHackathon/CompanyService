@@ -1,0 +1,41 @@
+using Microsoft.AspNetCore.Mvc.ApplicationModels;
+
+namespace Api.Common;
+
+/// <summary>
+/// Префикс маршрутов для контроллеров без явного [Route(...)],
+/// и добавление префикса к уже указанным маршрутам.
+/// </summary>
+public class RoutePrefixConvention(string prefix) : IControllerModelConvention
+{
+    public void Apply(ControllerModel controller)
+    {
+        foreach (var selector in controller.Selectors)
+        {
+            selector.AttributeRouteModel = selector.AttributeRouteModel is null
+                ? new AttributeRouteModel { Template = prefix }
+                : new AttributeRouteModel
+                {
+                    Template = AttributeRouteModel.CombineTemplates(prefix, selector.AttributeRouteModel.Template)
+                };
+        }
+
+        if (controller.Selectors.Any(s => s.AttributeRouteModel is not null))
+        {
+            return;
+        }
+
+        foreach (var action in controller.Actions)
+        {
+            foreach (var selector in action.Selectors)
+            {
+                selector.AttributeRouteModel = selector.AttributeRouteModel is null
+                    ? new AttributeRouteModel { Template = prefix }
+                    : new AttributeRouteModel
+                    {
+                        Template = AttributeRouteModel.CombineTemplates(prefix, selector.AttributeRouteModel.Template)
+                    };
+            }
+        }
+    }
+}

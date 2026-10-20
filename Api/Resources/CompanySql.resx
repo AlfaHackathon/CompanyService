@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="GetById" xml:space="preserve">
+    <value>SELECT id, name, inn, creator_id, parent_company_id, region,
+revenue, count_of_employees, bank_profile_id, created_at
+FROM companies
+WHERE id = @id</value>
+  </data>
+  <data name="GetByUser" xml:space="preserve">
+    <value>SELECT c.id, c.name, c.inn, c.creator_id, c.parent_company_id, c.region,
+c.revenue, c.count_of_employees, c.bank_profile_id, c.created_at
+FROM companies c
+JOIN company_members m ON m.company_id = c.id
+WHERE m.user_id = @userId</value>
+  </data>
+  <data name="Create" xml:space="preserve">
+    <value>INSERT INTO companies (id, name, inn, creator_id, parent_company_id, region,
+revenue, count_of_employees, bank_profile_id, created_at)
+VALUES (@id, @name, @inn, @creator_id, @parent_company_id, @region,
+@revenue, @count_of_employees, @bank_profile_id, @created_at)
+RETURNING id, name, inn, creator_id, parent_company_id, region,
+revenue, count_of_employees, bank_profile_id, created_at</value>
+  </data>
+  <data name="Update" xml:space="preserve">
+    <value>UPDATE companies SET
+name = COALESCE(@name, name),
+inn = COALESCE(@inn, inn),
+region = COALESCE(@region, region),
+revenue = COALESCE(@revenue, revenue),
+count_of_employees = COALESCE(@count_of_employees, count_of_employees),
+bank_profile_id = COALESCE(@bank_profile_id, bank_profile_id)
+WHERE id = @id</value>
+  </data>
+  <data name="SetIndustriesDelete" xml:space="preserve">
+    <value>DELETE FROM company_industries WHERE company_id = @companyId</value>
+  </data>
+  <data name="SetIndustriesInsert" xml:space="preserve">
+    <value>INSERT INTO company_industries (company_id, industry_id)
+VALUES (@companyId, @industryId)
+ON CONFLICT DO NOTHING</value>
+  </data>
+  <data name="GetIndustries" xml:space="preserve">
+    <value>SELECT i.id, i.code, i.name
+FROM industries i
+JOIN company_industries ci ON ci.industry_id = i.id
+WHERE ci.company_id = @companyId
+ORDER BY i.code</value>
+  </data>
+  <data name="GetMembers" xml:space="preserve">
+    <value>SELECT company_id, user_id, joined_at
+FROM company_members
+WHERE company_id = @companyId
+ORDER BY joined_at</value>
+  </data>
+  <data name="GetChildren" xml:space="preserve">
+    <value>SELECT id, name, inn, creator_id, parent_company_id, region,
+revenue, count_of_employees, bank_profile_id, created_at
+FROM companies
+WHERE parent_company_id = @parentId
+ORDER BY name</value>
+  </data>
+  <data name="AddMember" xml:space="preserve">
+    <value>INSERT INTO company_members (company_id, user_id, joined_at)
+VALUES (@companyId, @userId, @joinedAt)
+ON CONFLICT DO NOTHING</value>
+  </data>
+</root>
