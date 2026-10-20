@@ -1,4 +1,3 @@
 <Solution>
-  <Project Path="../MongoContext/AlfaHackaton.MongoContext/AlfaHackaton.MongoContext.csproj" />
   <Project Path="Api/Api.csproj" />
 </Solution>

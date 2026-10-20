@@ -15,14 +15,11 @@
 # NuGet
 *.nupkg
 *.snupkg
-**/[Pp]ackages/*
-!**/[Pp]ackages/build/
 *.nuget.props
 *.nuget.targets
 project.lock.json
 
 # Rider / VS Code
-.idea/
 .vscode/
 
 # Windows
@@ -31,5 +28,3 @@ Thumbs.db
 # Others
 *.cache
 *.log
-launchSettings.json.bak
-**/bin/**
