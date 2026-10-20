@@ -1,5 +1,4 @@
 ﻿using AlfaHackaton.Controllers.Controllers;
-using AlfaHackaton.Controllers.Extensions;
 using Api.Contracts.Companies;
 using Api.Contracts.Industries;
 using Api.Services.Interfaces;
