@@ -11,5 +11,8 @@ public interface IInviteRepository
     /// <summary>Атомарно пометить использованным (если ещё не использован и не протух).</summary>
     Task<InviteDocument?> TryUseAsync(string code, Guid userId);
 
+    /// <summary>Удалить инвайт по коду (после успешного использования).</summary>
+    Task DeleteAsync(string code);
+
     Task InsertExpiredForTestAsync(string code, Guid companyId); // проверка TTL в смоуке
 }

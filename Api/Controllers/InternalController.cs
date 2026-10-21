@@ -1,5 +1,6 @@
 using Api.Contracts.Companies;
 using Api.Contracts.Invites;
+using Api.Services.Exceptions;
 using Api.Services.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 
@@ -19,14 +20,22 @@ public class InternalController(
 
     /// <summary>
     /// Создать компанию при регистрации пользователя без инвайта (вызывает auth-service).
+    /// 409 — у создателя уже есть компания.
     /// </summary>
     [HttpPost("companies")]
     public async Task<IActionResult> CreateCompany([FromBody] CreateCompanyInternalRequest request, CancellationToken ct = default)
     {
         if (!IsInternalRequest()) return Unauthorized(new { error = "Только для внутренних вызовов" });
 
-        var created = await companies.CreateInternalAsync(request, ct);
-        return Ok(new { id = created.Id, name = created.Name });
+        try
+        {
+            var created = await companies.CreateInternalAsync(request, ct);
+            return Ok(new { id = created.Id, name = created.Name });
+        }
+        catch (UserAlreadyHasCompanyException)
+        {
+            return Conflict(new { error = "Пользователь уже состоит в компании" });
+        }
     }
 
     /// <summary>Компания пользователя (для других сервисов).</summary>
@@ -39,6 +48,27 @@ public class InternalController(
         return company is null
             ? NotFound(new { error = "Пользователь не состоит в компании" })
             : Ok(new { id = company.Id, name = company.Name, bankProfileId = company.BankProfileId });
+    }
+
+    /// <summary>id всех участников компании (для фильтрации списков других сервисов).</summary>
+    [HttpGet("companies/{companyId:guid}/member-ids")]
+    public async Task<IActionResult> GetMemberIds(Guid companyId, CancellationToken ct = default)
+    {
+        if (!IsInternalRequest()) return Unauthorized(new { error = "Только для внутренних вызовов" });
+
+        if (await companies.GetByIdAsync(companyId, ct) is null)
+            return NotFound(new { error = "Компания не найдена" });
+
+        return Ok(await companies.GetMemberIdsAsync(companyId, ct));
+    }
+
+    /// <summary>internal: валидация кода инвайта перед регистрацией по ссылке (вызывает auth-service).</summary>
+    [HttpGet("invites/{code}")]
+    public async Task<IActionResult> ValidateInvite(string code, CancellationToken ct = default)
+    {
+        if (!IsInternalRequest()) return Unauthorized(new { error = "Только для внутренних вызовов" });
+
+        return Ok(await invites.ValidateAsync(code, ct));
     }
 
     /// <summary>

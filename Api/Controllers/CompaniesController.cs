@@ -1,6 +1,7 @@
 ﻿using AlfaHackaton.Controllers.Controllers;
 using Api.Contracts.Companies;
 using Api.Contracts.Industries;
+using Api.Services.Exceptions;
 using Api.Services.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 
@@ -15,6 +16,24 @@ namespace Api.Controllers;
 [Route("companies")]
 public class CompaniesController(ICompanyService companies) : BaseAuthController
 {
+    /// <summary>Создать свою компанию вместе с создателем в участниках. 409 — если юзер уже состоит в компании.</summary>
+    [HttpPost]
+    public async Task<IActionResult> CreateMy([FromBody] CreateCompanyRequest request, CancellationToken ct = default)
+    {
+        try
+        {
+            var created = await companies.CreateInternalAsync(new CreateCompanyInternalRequest(
+                UserId, request.Name, request.Inn, request.Region, request.Revenue,
+                request.CountOfEmployees, request.IndustryCodes), ct);
+
+            return Ok(await companies.ToResponseAsync(created, UserId, ct));
+        }
+        catch (UserAlreadyHasCompanyException)
+        {
+            return Conflict(new { error = "У пользователя уже есть компания" });
+        }
+    }
+
     /// <summary>Своя компания с отраслями. 404 — если пользователь ещё не состоит в компании.</summary>
     [HttpGet("me")]
     public async Task<IActionResult> GetMy(CancellationToken ct = default)

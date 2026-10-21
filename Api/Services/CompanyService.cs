@@ -2,6 +2,7 @@ using Api.Contracts.Companies;
 using Api.Contracts.Industries;
 using Api.Models;
 using Api.Repositories.Interfaces;
+using Api.Services.Exceptions;
 using Api.Services.Interfaces;
 
 namespace Api.Services;
@@ -53,11 +54,24 @@ public class CompanyService(
             .ToList();
     }
 
+    public async Task<List<Guid>> GetMemberIdsAsync(Guid companyId, CancellationToken ct = default)
+    {
+        var members = await companies.GetMembersAsync(companyId, ct);
+        return members.Select(m => m.UserId).ToList();
+    }
+
     public Task<List<Company>> GetChildrenAsync(Guid parentId, CancellationToken ct = default)
         => companies.GetChildrenAsync(parentId, ct);
 
     public async Task<Company> CreateInternalAsync(CreateCompanyInternalRequest request, CancellationToken ct = default)
     {
+        // У юзера не больше одной компании: если уже состоит — не создаём
+        var existing = await companies.GetByUserAsync(request.CreatorId, ct);
+        if (existing is not null)
+        {
+            throw new UserAlreadyHasCompanyException(existing.Id);
+        }
+
         var company = new Company
         {
             Id = Guid.NewGuid(),
@@ -70,6 +84,9 @@ public class CompanyService(
             CreatedAt = DateTime.UtcNow
         };
         var created = await companies.CreateAsync(company, ct);
+
+        // Создатель сразу становится участником, иначе компании/me отдаст 404
+        await companies.AddMemberAsync(created.Id, request.CreatorId, ct);
 
         if (request.IndustryCodes is { Count: > 0 })
         {

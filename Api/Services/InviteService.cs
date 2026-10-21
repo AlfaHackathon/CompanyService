@@ -43,13 +43,13 @@ public class InviteService(
     {
         var invite = await invites.GetByCodeAsync(code);
         if (invite is null)
-            return new InviteInfoResponse(false, null, "Инвайт не найден");
+            return new InviteInfoResponse(false, null, "Инвайт не найден", StatusCodes.Status404NotFound);
 
         if (invite.UsedAt is not null)
-            return new InviteInfoResponse(false, null, "Инвайт уже использован");
+            return new InviteInfoResponse(false, null, "Инвайт уже использован", StatusCodes.Status409Conflict);
 
         if (invite.ExpiresAt <= DateTime.UtcNow)
-            return new InviteInfoResponse(false, null, "Инвайт истёк");
+            return new InviteInfoResponse(false, null, "Инвайт истёк", StatusCodes.Status410Gone);
 
         var company = await companies.GetByIdAsync(invite.CompanyId, ct);
         return new InviteInfoResponse(true, company?.Name, null);
@@ -62,11 +62,19 @@ public class InviteService(
         if (invite.UsedAt is not null) return new UseInviteResult("Инвайт уже использован", StatusCodes.Status409Conflict, Guid.Empty, null);
         if (invite.ExpiresAt <= DateTime.UtcNow) return new UseInviteResult("Инвайт истёк", StatusCodes.Status410Gone, Guid.Empty, null);
 
+        // У юзера не больше одной компании: повторное использование инвайта не имеет смысла
+        if (await companies.GetByUserAsync(userId, ct) is not null)
+            return new UseInviteResult("Пользователь уже состоит в компании", StatusCodes.Status409Conflict, Guid.Empty, null);
+
         var used = await invites.TryUseAsync(code, userId);
         if (used is null) return new UseInviteResult("Инвайт уже использован", StatusCodes.Status409Conflict, Guid.Empty, null);
 
         await companies.AddMemberAsync(used.CompanyId, userId, ct);
         var company = await companies.GetByIdAsync(used.CompanyId, ct);
+
+        // Запись из инвайтов удаляем после успешного использования
+        await invites.DeleteAsync(code);
+
         return new UseInviteResult(null, 0, used.CompanyId, company?.Name);
     }
 

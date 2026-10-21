@@ -19,7 +19,7 @@ public interface IInviteService
     /// <summary>Публичная валидация кода (для страницы инвайта).</summary>
     Task<InviteInfoResponse> ValidateAsync(string code, CancellationToken ct = default);
 
-    /// <summary>internal: пометить использованным и добавить юзера в компанию (UseInviteResult.Error = null — успех).</summary>
+    /// <summary>internal: пометить использованным, добавить юзера в компанию и удалить инвайт (UseInviteResult.Error = null — успех).</summary>
     Task<UseInviteResult> UseInternalAsync(string code, Guid userId, CancellationToken ct = default);
 
     Task InsertExpiredForTestAsync(string code, Guid companyId);

@@ -26,10 +26,15 @@ public interface ICompanyService
     /// <summary>Участники компании.</summary>
     Task<List<MemberResponse>> GetMembersAsync(Guid companyId, CancellationToken ct = default);
 
+    /// <summary>internal: id участников компании (для фильтрации списков user-service).</summary>
+    Task<List<Guid>> GetMemberIdsAsync(Guid companyId, CancellationToken ct = default);
+
     /// <summary>Дочерние компании.</summary>
     Task<List<Company>> GetChildrenAsync(Guid parentId, CancellationToken ct = default);
 
-    /// <summary>internal: создать компанию при регистрации без инвайта (+ отрасли).</summary>
+    /// <summary>internal: создать компанию при регистрации без инвайта (+ отрасли).
+    /// Создатель автоматически добавляется участником. Если у создателя уже есть компания —
+    /// бросает <see cref="UserAlreadyHasCompanyException"/>.</summary>
     Task<Company> CreateInternalAsync(CreateCompanyInternalRequest request, CancellationToken ct = default);
 
     /// <summary>internal: добавить участника в компанию.</summary>

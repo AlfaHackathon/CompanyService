@@ -21,6 +21,7 @@ ProjectReference на PackageReference).
 
 | Метод | Путь | Доступ | Что делает |
 |---|---|---|---|
+| POST | `/company-service/companies` | JWT | создать свою компанию (409 — юзер уже состоит); создатель становится участником |
 | GET | `/company-service/companies/me` | JWT | своя компания + отрасли + isCreator |
 | PATCH | `/company-service/companies/me` | JWT | частичное обновление (null = не трогать) |
 | PUT | `/company-service/companies/me/industries` | JWT | заменить отрасли (`{"industryCodes": ["G","H"]}`) |
@@ -30,13 +31,16 @@ ProjectReference на PackageReference).
 | POST | `/company-service/companies/me/invites` | JWT, **создатель** | инвайт-код (TTL 7 дней по умолчанию, 1–30) |
 | GET | `/company-service/companies/me/invites` | JWT | список со статусами active/used/expired |
 | GET | `/company-service/invites/{code}` | — | публичная валидация (страница инвайта) |
-| POST | `/company-service/internal/companies` | X-Internal-Secret | создать компанию при регистрации (auth-service) |
+| POST | `/company-service/internal/companies` | X-Internal-Secret | создать компанию при регистрации (auth-service); 409 — создатель уже состоит |
+| GET | `/company-service/internal/invites/{code}` | X-Internal-Secret | валидация кода инвайта (auth-service перед регистрацией по ссылке) |
 | GET | `/company-service/internal/companies/by-user/{userId}` | X-Internal-Secret | компания пользователя |
-| POST | `/company-service/internal/invites/{code}/use` | X-Internal-Secret | принять инвайт + добавить участника |
+| GET | `/company-service/internal/companies/{companyId}/member-ids` | X-Internal-Secret | id всех участников компании |
+| POST | `/company-service/internal/invites/{code}/use` | X-Internal-Secret | принять инвайт + добавить участника + **удалить инвайт**; 409 — юзер уже в компании |
 
 Регистрация по инвайту (шов для auth-service): фронт показывает
-`GET /invites/{code}` → `POST /auth/register` с кодом → auth-service вызывает
-`internal/invites/{code}/use` с userId нового юзера.
+`GET /invites/{code}` → `POST /auth-service/register-invite` с кодом →
+auth-service вызывает `internal/invites/{code}/use` с userId нового юзера;
+инвайт-запись при успехе **удаляется** из Mongo, юзер сразу в компании.
 
 ## Запуск локально
 
