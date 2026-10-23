@@ -121,7 +121,7 @@ ORDER BY name</value>
     <value>WITH inserted AS (
 INSERT INTO company_members (company_id, user_id, joined_at)
 VALUES (@companyId, @userId, @joinedAt)
-ON CONFLICT (user_id) DO NOTHING
+ON CONFLICT DO NOTHING
 RETURNING 1
 )
 SELECT EXISTS (SELECT 1 FROM inserted)</value>

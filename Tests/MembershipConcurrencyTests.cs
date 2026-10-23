@@ -103,6 +103,31 @@ public sealed class MembershipConcurrencyTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Concurrent_invites_to_same_company_for_same_user_return_conflicts()
+    {
+        var company = await SeedCompany();
+        var userId = Guid.NewGuid();
+        var codes = Enumerable.Range(0, 16).Select(index => "same-company-" + index).ToArray();
+        foreach (var code in codes) invites.Seed(code, company);
+
+        var responses = await Race("company_members", codes
+            .Select(code => (Func<Task<HttpResponseMessage>>)(() => Use(code, userId))).ToArray());
+
+        Assert.Equal(1, responses.Count(response => response.StatusCode == HttpStatusCode.OK));
+        Assert.Equal(codes.Length - 1, responses.Count(response => response.StatusCode == HttpStatusCode.Conflict));
+        foreach (var response in responses) response.Dispose();
+        Assert.Equal(1, invites.ClaimAttempts);
+        Assert.Equal(codes.Length - 1, invites.Remaining().Length);
+        Assert.All(invites.Remaining(), invite =>
+        {
+            Assert.Null(invite.UsedAt);
+            Assert.Null(invite.UsedBy);
+        });
+        await using var connection = new NpgsqlConnection(connectionString);
+        Assert.Equal(1, await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM company_members WHERE user_id = @userId", new { userId }));
+    }
+
+    [Fact]
     public async Task Create_and_invite_share_the_same_membership_constraint()
     {
         var existingCompany = await SeedCompany();
@@ -171,7 +196,7 @@ public sealed class MembershipConcurrencyTests : IAsyncLifetime
         return company!.Id;
     }
 
-    private async Task<HttpResponseMessage[]> Race(string tables, Func<Task<HttpResponseMessage>> first, Func<Task<HttpResponseMessage>> second)
+    private async Task<HttpResponseMessage[]> Race(string tables, params Func<Task<HttpResponseMessage>>[] attempts)
     {
         await using var blocker = new NpgsqlConnection(connectionString);
         await blocker.OpenAsync();
@@ -179,10 +204,10 @@ public sealed class MembershipConcurrencyTests : IAsyncLifetime
         // These fixed table names are supplied only by tests. Reads remain available,
         // so the old check-then-insert implementation reaches both inserts before either wins.
         await blocker.ExecuteAsync($"LOCK TABLE {tables} IN SHARE MODE", transaction: transaction);
-        var requests = new[] { first(), second() };
+        var requests = attempts.Select(attempt => attempt()).ToArray();
         await using var observer = new NpgsqlConnection(connectionString);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-        while (await observer.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%INSERT INTO%'") < 2)
+        while (await observer.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%INSERT INTO%'") < requests.Length)
         {
             await Task.Delay(20, timeout.Token);
         }
