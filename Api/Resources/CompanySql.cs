@@ -38,6 +38,9 @@ public static class CompanySql
     public static string GetChildren { get; } = Manager.GetString(nameof(GetChildren))
         ?? throw new InvalidOperationException("Ресурс CompanySql.GetChildren не найден");
 
-    public static string AddMember { get; } = Manager.GetString(nameof(AddMember))
-        ?? throw new InvalidOperationException("Ресурс CompanySql.AddMember не найден");
+    public static string ReserveMember { get; } = Manager.GetString(nameof(ReserveMember))
+        ?? throw new InvalidOperationException("Ресурс CompanySql.ReserveMember не найден");
+
+    public static string EnforceSingleMembership { get; } = Manager.GetString(nameof(EnforceSingleMembership))
+        ?? throw new InvalidOperationException("Ресурс CompanySql.EnforceSingleMembership не найден");
 }
