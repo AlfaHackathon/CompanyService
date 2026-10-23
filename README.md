@@ -66,3 +66,45 @@ dotnet run --urls http://127.0.0.1:8084
 инвайты → использование коллегой → 409 на повтор → права (создатель vs коллега)
 → TTL-удаление протухшего инвайта Mongo-й через ~минуту → 401 без токена/секрета.
 Индексы в Mongo: `ExpiresAt_1` (ttl=0), `Code_1` (unique), `CompanyId_1`.
+
+## Версионные профили и инструменты анализа
+
+`/company-service/internal/knowledge` — авторитетный API профилей компаний,
+явных групп, связей людей и ролевых разрешений. Все маршруты требуют
+`X-Internal-Secret` (`Internal:Secret`). Профили хранятся в PostgreSQL отдельно
+от операционных таблиц компаний: ревизия неизменяема, `knownAt` задаёт срез
+знаний, источник фиксируется тройкой materialId/versionId/contentHash.
+Из связи человека с компанией и членства в группе права чтения не выводятся.
+
+- `POST/GET companies`, `POST/GET groups`, `POST/GET roles`, `POST/GET people`:
+  запись ревизии и чтение последней известной на `?asOf=...`.
+- `GET companies/versions`: все ревизии для перестраиваемой поисковой проекции.
+- `GET groups/{id}?asOf=...`: раскрытие вложенных групп с путями, пропусками и циклами.
+- `GET companies/{id}?asOf=...`, `GET people/{id}?asOf=...`,
+  `GET role-scope?personId=...&companyId=...&asOf=...`:
+  профиль человека и явное ролевое разрешение (404 при отсутствии).
+- `GET changes?after=0`: последовательные изменения, опубликованные в одной
+  транзакции с профилем; курсор принадлежит CompanyService.
+- `POST selection`: `{asOf,targetCompanyIds,groupIds,personIds,queries,
+  previousCompanyIds,companyBudget,projectionOnly}` →
+  `{groups,selectedCompanyIds,pendingCompanyIds}`. CompanyService ранжирует
+  найденные ContextService компании через RRF, раскрывает группы и применяет
+  явные ролевые разрешения. Явные targetCompanyIds имеют приоритет.
+- `POST segments`: `{asOf,companyIds,granularity:"activity"}` → `{segments}`;
+  группировка по полному ОКВЭД, `broad` — по первым двум цифрам.
+- `POST role-scope`: `{asOf,personIds,companyIds}` →
+  `{roles,missingPersonIds,companyIds}`. Возвращает явные роли и объединение
+  запрошенных компаний с разрешёнными; отсутствующие роли видны отдельно.
+  При пустом `personIds` выбираются явные роли с разрешением на запрошенные компании.
+
+`ContextService:BaseUrl` — корень HTTP сервиса материалов; для проверки
+неизменяемых источников и поиска используется
+`ContextService:InternalSecret` с fallback на `Internal:Secret`.
+CompanyService проверяет hash, время знания и компанию источника перед записью.
+При недоступности ContextService запись завершается ошибкой, локального
+fallback на его прежнее хранилище профилей нет.
+
+Миграция создаёт `company_knowledge_revisions` и `company_knowledge_changes`.
+Если профили уже записывались в прежний ContextService, перед переключением
+нужно явно перенести их через этот API с исходными ревизиями и источниками;
+автоматического межсервисного копирования или удаления данных нет.
