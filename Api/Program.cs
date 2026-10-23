@@ -36,7 +36,8 @@ builder.Services.AddSingleton<IInviteRepository, InviteRepository>();
 builder.Services.AddSingleton<ICompanyService, CompanyService>();
 builder.Services.AddSingleton<IIndustryService, IndustryService>();
 builder.Services.AddSingleton<IInviteService, InviteService>();
-builder.Services.AddHttpClient(nameof(ContextKnowledgeClient), client => client.Timeout = TimeSpan.FromSeconds(120));
+builder.Services.AddHttpClient(nameof(ContextKnowledgeClient), client => client.Timeout = TimeSpan.FromSeconds(120))
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
 builder.Services.AddSingleton<ContextKnowledgeClient>();
 builder.Services.AddSingleton<KnowledgeStore>();
 builder.Services.AddSingleton<KnowledgeChanges>();
