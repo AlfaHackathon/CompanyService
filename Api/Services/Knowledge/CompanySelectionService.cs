@@ -8,7 +8,7 @@ namespace Api.Services;
 
 public sealed class CompanySelectionService(KnowledgeService knowledge, ContextKnowledgeClient context)
 {
-    public async Task<Result<CompanySelection>> Select(CompanySelectionRequest request, CancellationToken ct)
+    public async Task<Result<CompanySelection>> SelectAsync(CompanySelectionRequest request, CancellationToken ct)
     {
         if (request.AsOf == default || request.TargetCompanyIds is null || request.GroupIds is null ||
             request.PersonIds is null || request.Queries is null || request.PreviousCompanyIds is null ||
@@ -26,36 +26,54 @@ public sealed class CompanySelectionService(KnowledgeService knowledge, ContextK
         {
             foreach (var query in request.Queries)
             {
-                var found = await context.Search(query, request.AsOf, ct);
-                if (found.Error is { } error) return new(error);
-                if (found.Content?.Hits is not { } hits) return new(Invalid("Retrieval did not return hits."));
+                var found = await context.SearchAsync(query, request.AsOf, ct);
+                if (found.Error is { } error)
+                {
+                    return new(error);
+                }
+                if (found.Content?.Hits is not { } hits)
+                {
+                    return new(Invalid("Retrieval did not return hits."));
+                }
                 for (var rank = 0; rank < hits.Length; rank++)
                 {
                     var id = hits[rank].CompanyId;
-                    if (id != Guid.Empty) ranks[id] = ranks.GetValueOrDefault(id) + 1.0 / (60 + rank + 1);
+                    if (id != Guid.Empty)
+                    {
+                        ranks[id] = ranks.GetValueOrDefault(id) + 1.0 / (60 + rank + 1);
+                    }
                 }
             }
         }
 
-        var profiles = await knowledge.Groups(request.AsOf);
+        var profiles = await knowledge.GroupsAsync(request.AsOf);
         var groupIds = request.GroupIds.Length > 0 ? request.GroupIds : profiles.Select(g => g.GroupId).ToArray();
         var groups = new List<GroupExpansion>();
         foreach (var id in groupIds.Distinct(StringComparer.Ordinal))
         {
             var expanded = GroupExpansionService.Expand(id, profiles);
-            if (expanded.Error is { } error) return new(error);
+            if (expanded.Error is { } error)
+            {
+                return new(error);
+            }
             var group = expanded.Content!;
-            if (request.GroupIds.Contains(id, StringComparer.Ordinal) || group.CompanyIds.Any(ranks.ContainsKey)) groups.Add(group);
+            if (request.GroupIds.Contains(id, StringComparer.Ordinal) || group.CompanyIds.Any(ranks.ContainsKey))
+            {
+                groups.Add(group);
+            }
         }
 
         var companies = new List<Guid>();
-        if (request.TargetCompanyIds.Length > 0) companies.AddRange(request.TargetCompanyIds);
+        if (request.TargetCompanyIds.Length > 0)
+        {
+            companies.AddRange(request.TargetCompanyIds);
+        }
         else
         {
             companies.AddRange(groups.SelectMany(g => g.CompanyIds));
             if (request.PersonIds.Length > 0)
             {
-                companies.AddRange((await knowledge.Roles(request.AsOf))
+                companies.AddRange((await knowledge.RolesAsync(request.AsOf))
                     .Where(r => request.PersonIds.Contains(r.PersonId, StringComparer.Ordinal)).SelectMany(r => r.AllowedCompanyIds));
             }
             companies.AddRange(ranks.OrderByDescending(pair => pair.Value).Select(pair => pair.Key));
@@ -63,40 +81,68 @@ public sealed class CompanySelectionService(KnowledgeService knowledge, ContextK
         }
 
         var unique = companies.Distinct().ToArray();
-        return new(new CompanySelection(groups.ToArray(), unique.Take(request.CompanyBudget).ToArray(), unique.Skip(request.CompanyBudget).ToArray()), null);
+        return new(new CompanySelection
+        {
+            Groups = groups.ToArray(),
+            SelectedCompanyIds = unique.Take(request.CompanyBudget).ToArray(),
+            PendingCompanyIds = unique.Skip(request.CompanyBudget).ToArray()
+        }, null);
     }
 
-    public async Task<Result<RoleScope>> Scope(RoleScopeRequest request)
+    public async Task<Result<RoleScope>> ScopeAsync(RoleScopeRequest request)
     {
         if (request.AsOf == default || request.PersonIds is null || request.CompanyIds is null ||
             request.PersonIds.Length > 64 || request.CompanyIds.Length > 10000 || request.CompanyIds.Contains(Guid.Empty) ||
             request.PersonIds.Any(id => Common.IdentifierValidation.RequireId(id, "personId").Error is not null))
+        {
             return new(Invalid("A bounded role scope with asOf and explicit person/company IDs is required."));
+        }
 
-        var roles = (await knowledge.Roles(request.AsOf)).Where(r => request.PersonIds.Length > 0
+        var roles = (await knowledge.RolesAsync(request.AsOf)).Where(r => request.PersonIds.Length > 0
             ? request.PersonIds.Contains(r.PersonId, StringComparer.Ordinal)
             : r.AllowedCompanyIds.Any(request.CompanyIds.Contains)).ToArray();
         var missing = request.PersonIds.Where(id => !roles.Any(r => r.PersonId == id)).Distinct(StringComparer.Ordinal).ToArray();
         // Company links and group membership never create a read grant.
-        return new(new RoleScope(roles, missing, request.CompanyIds.Concat(roles.SelectMany(r => r.AllowedCompanyIds)).Distinct().ToArray()), null);
+        return new(new RoleScope
+        {
+            Roles = roles,
+            MissingPersonIds = missing,
+            CompanyIds = request.CompanyIds.Concat(roles.SelectMany(r => r.AllowedCompanyIds)).Distinct().ToArray()
+        }, null);
     }
 
-    public async Task<Result<CompanySegment[]>> Segments(SegmentRequest request)
+    public async Task<Result<CompanySegment[]>> SegmentsAsync(SegmentRequest request)
     {
         if (request.AsOf == default || request.CompanyIds is null || request.CompanyIds.Length > 10000 ||
             request.CompanyIds.Contains(Guid.Empty) || request.Granularity is not ("activity" or "broad"))
+        {
             return new(Invalid("Segment scope requires asOf, valid company IDs and activity/broad granularity."));
+        }
 
-        var profiles = (await knowledge.Companies(request.AsOf)).Where(p => request.CompanyIds.Contains(p.CompanyId));
+        var profiles = (await knowledge.CompaniesAsync(request.AsOf)).Where(p => request.CompanyIds.Contains(p.CompanyId));
         var rows = profiles.SelectMany(p => p.IndustryCodes.Where(c => c is not null && Regex.IsMatch(c, @"^\d{2}(?:\.\d{1,2}){0,2}$"))
             .Select(c => request.Granularity == "broad" ? c[..2] : c).Distinct()
             .Select(code => new { Key = (request.Granularity == "broad" ? "okved2:" : "activity:") + code, Profile = p }));
         return new(rows.GroupBy(row => row.Key).OrderBy(g => g.Key, StringComparer.Ordinal)
-            .Select(g => new CompanySegment(g.Key,
-                g.Select(row => row.Profile.Description.Split(';')[0]).Distinct().Order(StringComparer.Ordinal).ToArray(),
-                g.Select(row => row.Profile.CompanyId).Distinct().OrderBy(id => id.ToString("D"), StringComparer.Ordinal).ToArray(),
-                g.SelectMany(row => row.Profile.SourceRefs).Distinct().ToArray())).ToArray(), null);
+            .Select(g => new CompanySegment
+            {
+                Key = g.Key,
+                Labels = g.Select(row => row.Profile.Description.Split(';')[0]).Distinct().Order(StringComparer.Ordinal).ToArray(),
+                CompanyIds = g.Select(row => row.Profile.CompanyId).Distinct().OrderBy(id => id.ToString("D"), StringComparer.Ordinal).ToArray(),
+                ProfileRefs = g.SelectMany(row => row.Profile.SourceRefs).DistinctBy(r => (r.MaterialId, r.VersionId, r.ContentHash)).ToArray()
+            }).ToArray(), null);
     }
 
-    private static Error Invalid(string message) => new(message, ErrorSource.Client, ErrorType.CorruptedInfo) { HttpStatusCode = HttpStatusCode.BadRequest };
+    private static Error Invalid(string message)
+    {
+        return new(message, ErrorSource.Client, ErrorType.CorruptedInfo) { HttpStatusCode = HttpStatusCode.BadRequest };
+    }
+
+    public async Task<Result<CompanySegmentsResponse>> GetSegmentsAsync(SegmentRequest request)
+    {
+        var result = await SegmentsAsync(request);
+        return result.Error is { } error
+            ? new(error)
+            : new(new CompanySegmentsResponse { Segments = result.Content! }, null);
+    }
 }

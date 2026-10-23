@@ -1,10 +1,11 @@
 namespace Api.Contracts.Companies;
 
-/// <summary>Создание своей компании. У пользователя не должно быть другой компании.</summary>
-public record CreateCompanyRequest(
-    string Name,
-    string? Inn,
-    string? Region,
-    decimal? Revenue,
-    int? CountOfEmployees,
-    List<string>? IndustryCodes);
+public class CreateCompanyRequest
+{
+    public required string Name { get; set; }
+    public string? Inn { get; set; }
+    public string? Region { get; set; }
+    public decimal? Revenue { get; set; }
+    public int? CountOfEmployees { get; set; }
+    public List<string>? IndustryCodes { get; set; }
+}

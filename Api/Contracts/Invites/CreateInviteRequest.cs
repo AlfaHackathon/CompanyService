@@ -1,3 +1,6 @@
 namespace Api.Contracts.Invites;
 
-public record CreateInviteRequest(int? ExpiresInDays);
+public class CreateInviteRequest
+{
+    public int? ExpiresInDays { get; set; }
+}

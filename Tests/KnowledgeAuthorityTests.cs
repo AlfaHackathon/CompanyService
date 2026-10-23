@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using AlfaHackaton.DapperContext;
 using Api.Common;
+using Api.Contracts.Context;
 using Api.Contracts.Knowledge;
 using Api.Controllers;
 using Api.Migrations;
@@ -25,7 +26,7 @@ public sealed class KnowledgeAuthorityTests : IAsyncLifetime
     private static readonly Guid CompanyA = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static readonly Guid CompanyB = Guid.Parse("22222222-2222-2222-2222-222222222222");
     private static readonly DateTimeOffset At = DateTimeOffset.Parse("2026-10-01T12:00:00Z");
-    private static readonly SourceReference[] Evidence = [new("source", "v1", new string('a', 64))];
+    private static readonly SourceReference[] Evidence = [new() { MaterialId = "source", VersionId = "v1", ContentHash = new string('a', 64) }];
     private string administrativeConnection = "";
     private readonly string database = "company_test_" + Guid.NewGuid().ToString("N");
     private TestServer server = null!;
@@ -75,10 +76,21 @@ public sealed class KnowledgeAuthorityTests : IAsyncLifetime
         var profile = Profile(CompanyA);
         Assert.Equal(HttpStatusCode.OK, (await http.PostAsJsonAsync(Prefix + "companies", profile)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await http.PostAsJsonAsync(Prefix + "companies", profile)).StatusCode);
-        Assert.Equal(HttpStatusCode.Conflict, (await http.PostAsJsonAsync(Prefix + "companies", profile with { Name = "Changed" })).StatusCode);
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await http.PostAsJsonAsync(Prefix + "companies", profile with { RevisionId = "bad", SourceRefs = [Evidence[0] with { ContentHash = "wrong" }] })).StatusCode);
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await http.PostAsJsonAsync(Prefix + "companies", profile with { RevisionId = "early", KnownAt = At.AddDays(-2) })).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await http.PostAsJsonAsync(Prefix + "companies", profile with { RevisionId = "r2", KnownAt = At.AddDays(1), Name = "New name" })).StatusCode);
+        profile.Name = "Changed";
+        Assert.Equal(HttpStatusCode.Conflict, (await http.PostAsJsonAsync(Prefix + "companies", profile)).StatusCode);
+        profile = Profile(CompanyA);
+        profile.RevisionId = "bad";
+        profile.SourceRefs = [new() { MaterialId = "source", VersionId = "v1", ContentHash = "wrong" }];
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await http.PostAsJsonAsync(Prefix + "companies", profile)).StatusCode);
+        profile = Profile(CompanyA);
+        profile.RevisionId = "early";
+        profile.KnownAt = At.AddDays(-2);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await http.PostAsJsonAsync(Prefix + "companies", profile)).StatusCode);
+        profile = Profile(CompanyA);
+        profile.RevisionId = "r2";
+        profile.KnownAt = At.AddDays(1);
+        profile.Name = "New name";
+        Assert.Equal(HttpStatusCode.OK, (await http.PostAsJsonAsync(Prefix + "companies", profile)).StatusCode);
         var before = await http.GetFromJsonAsync<JsonElement>(Prefix + "companies?asOf=" + Uri.EscapeDataString(At.ToString("O")));
         Assert.Equal("Company A", before.GetProperty("companies")[0].GetProperty("name").GetString());
         var all = await http.GetFromJsonAsync<JsonElement>(Prefix + "companies/versions");
@@ -95,15 +107,38 @@ public sealed class KnowledgeAuthorityTests : IAsyncLifetime
     public async Task Groups_selection_segments_and_grants_are_resolved_by_company_service()
     {
         Assert.Equal(HttpStatusCode.OK, (await http.PostAsJsonAsync(Prefix + "companies", Profile(CompanyA))).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await http.PostAsJsonAsync(Prefix + "groups", new GroupProfile("child", "r1", "Child", At, [new("company", CompanyA.ToString(), Evidence)], Evidence))).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await http.PostAsJsonAsync(Prefix + "groups", new GroupProfile("root", "r1", "Root", At, [new("group", "child", Evidence)], Evidence))).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await http.PostAsJsonAsync(Prefix + "people", new PersonProfile("person", "r1", At, [new(CompanyB, "owner", Evidence)], Evidence))).StatusCode);
-        var ungranted = await http.PostAsJsonAsync(Prefix + "role-scope", new RoleScopeRequest(At, ["person"], []));
+        Assert.Equal(HttpStatusCode.BadRequest, (await http.PostAsJsonAsync(Prefix + "groups", new
+        {
+            groupId = "missing-members", revisionId = "r1", name = "Missing members", knownAt = At, sourceRefs = Evidence
+        })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await http.PostAsJsonAsync(Prefix + "groups", new GroupProfile
+        {
+            GroupId = "child", RevisionId = "r1", Name = "Child", KnownAt = At,
+            Members = [new() { Kind = "company", Id = CompanyA.ToString(), SourceRefs = Evidence }], SourceRefs = Evidence
+        })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await http.PostAsJsonAsync(Prefix + "groups", new GroupProfile
+        {
+            GroupId = "root", RevisionId = "r1", Name = "Root", KnownAt = At,
+            Members = [new() { Kind = "group", Id = "child", SourceRefs = Evidence }], SourceRefs = Evidence
+        })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await http.PostAsJsonAsync(Prefix + "people", new PersonProfile
+        {
+            PersonId = "person", RevisionId = "r1", KnownAt = At,
+            CompanyLinks = [new() { CompanyId = CompanyB, RelationKind = "owner", SourceRefs = Evidence }], SourceRefs = Evidence
+        })).StatusCode);
+        var ungranted = await http.PostAsJsonAsync(Prefix + "role-scope", new RoleScopeRequest { AsOf = At, PersonIds = ["person"], CompanyIds = [] });
         var scope = (await ungranted.Content.ReadFromJsonAsync<RoleScope>())!;
         Assert.Empty(scope.CompanyIds);
         Assert.Contains("person", scope.MissingPersonIds);
-        Assert.Equal(HttpStatusCode.OK, (await http.PostAsJsonAsync(Prefix + "roles", new RoleProfile("person", CompanyA, "r1", "analyst", [], [CompanyA], [], At, Evidence))).StatusCode);
-        var selected = await http.PostAsJsonAsync(Prefix + "selection", new CompanySelectionRequest(At, [], ["root"], ["person"], ["industry"], [CompanyB], 1));
+        Assert.Equal(HttpStatusCode.OK, (await http.PostAsJsonAsync(Prefix + "roles", new RoleProfile
+        {
+            PersonId = "person", CompanyId = CompanyA, RevisionId = "r1", Role = "analyst",
+            Responsibilities = [], AllowedCompanyIds = [CompanyA], AllowedMaterialIds = [], KnownAt = At, SourceRefs = Evidence
+        })).StatusCode);
+        var selected = await http.PostAsJsonAsync(Prefix + "selection", new CompanySelectionRequest
+        {
+            AsOf = At, TargetCompanyIds = [], GroupIds = ["root"], PersonIds = ["person"], Queries = ["industry"], PreviousCompanyIds = [CompanyB], CompanyBudget = 1
+        });
         Assert.Equal(HttpStatusCode.OK, selected.StatusCode);
         var selection = (await selected.Content.ReadFromJsonAsync<CompanySelection>())!;
         Assert.Equal([CompanyA], selection.SelectedCompanyIds);
@@ -111,21 +146,34 @@ public sealed class KnowledgeAuthorityTests : IAsyncLifetime
         var group = Assert.Single(selection.Groups);
         Assert.True(group.Complete);
         Assert.Equal(["root", "child"], Assert.Single(group.Paths).GroupIds);
-        var segmented = await http.PostAsJsonAsync(Prefix + "segments", new SegmentRequest(At, [CompanyA]));
+        var segmented = await http.PostAsJsonAsync(Prefix + "segments", new SegmentRequest { AsOf = At, CompanyIds = [CompanyA] });
         var segments = (await segmented.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("segments");
         Assert.Equal("activity:28.1", segments[0].GetProperty("key").GetString());
         Assert.Equal(CompanyA, segments[0].GetProperty("companyIds")[0].GetGuid());
     }
 
-    private static CompanyProfile Profile(Guid id) => new(id, "r1", null, "Company A", "Equipment; details", ["28.1"], [], At, Evidence);
+    private static CompanyProfile Profile(Guid id)
+    {
+        return new()
+        {
+            CompanyId = id,
+            RevisionId = "r1",
+            Name = "Company A",
+            Description = "Equipment; details",
+            IndustryCodes = ["28.1"],
+            Exposures = [],
+            KnownAt = At,
+            SourceRefs = Evidence
+        };
+    }
     private sealed class EvidenceHandler : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Assert.Equal("synthetic-test", Assert.Single(request.Headers.GetValues("X-Internal-Secret")));
             object body = request.Method == HttpMethod.Get
-                ? new ContextKnowledgeClient.MaterialEvidence(Evidence[0].ContentHash, At.AddDays(-1), [CompanyA, CompanyB])
-                : new ContextKnowledgeClient.SearchHits([new(CompanyB)]);
+                ? new MaterialEvidence { ContentHash = Evidence[0].ContentHash, KnownAt = At.AddDays(-1), CompanyIds = [CompanyA, CompanyB] }
+                : new SearchHits { Hits = [new() { CompanyId = CompanyB }] };
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(body) });
         }
     }

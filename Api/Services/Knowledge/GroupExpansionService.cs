@@ -18,7 +18,7 @@ public static class GroupExpansionService
         var paths = new List<GroupPath>();
         var missing = new HashSet<string>();
         var cycles = new List<string[]>();
-        var refs = new HashSet<SourceReference>();
+        var refs = new Dictionary<(string MaterialId, string VersionId, string ContentHash), SourceReference>();
         var visited = 0;
         Result Visit(string current, string[] path)
         {
@@ -42,7 +42,7 @@ public static class GroupExpansionService
 
             foreach (var r in group.SourceRefs)
             {
-                refs.Add(r);
+                refs.TryAdd((r.MaterialId, r.VersionId, r.ContentHash), r);
             }
 
             var next = path.Append(current).ToArray();
@@ -50,7 +50,7 @@ public static class GroupExpansionService
             {
                 foreach (var r in member.SourceRefs)
                 {
-                    refs.Add(r);
+                    refs.TryAdd((r.MaterialId, r.VersionId, r.ContentHash), r);
                 }
 
                 if (member.Kind == "group")
@@ -62,7 +62,7 @@ public static class GroupExpansionService
                 }
                 else
                 {
-                    paths.Add(new GroupPath(Guid.Parse(member.Id), next));
+                    paths.Add(new GroupPath { CompanyId = Guid.Parse(member.Id), GroupIds = next });
                 }
             }
 
@@ -73,15 +73,16 @@ public static class GroupExpansionService
         {
             return new(expansionError);
         }
-        return new(new GroupExpansion(id,
-            paths.Select(x => x.CompanyId).Distinct().Order().ToArray(),
-            paths.ToArray(),
-            missing.Order().ToArray(),
-            cycles.ToArray(),
-            missing.Count == 0 &&
-            cycles.Count == 0,
-            refs.ToArray(),
-            groups.TryGetValue(id, out var root) ? root.AggregationRule : null),
-            null);
+        return new(new GroupExpansion
+        {
+            GroupId = id,
+            CompanyIds = paths.Select(x => x.CompanyId).Distinct().Order().ToArray(),
+            Paths = paths.ToArray(),
+            MissingGroups = missing.Order().ToArray(),
+            Cycles = cycles.ToArray(),
+            Complete = missing.Count == 0 && cycles.Count == 0,
+            SourceRefs = refs.Values.ToArray(),
+            AggregationRule = groups.TryGetValue(id, out var root) ? root.AggregationRule : null
+        }, null);
     }
 }

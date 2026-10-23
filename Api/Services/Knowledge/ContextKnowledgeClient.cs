@@ -3,23 +3,31 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using AlfaHackaton.Result;
 using AlfaHackaton.Result.Errors;
+using Api.Contracts.Context;
 
 namespace Api.Services;
 
 // Context owns material evidence and retrieval; company rules remain local.
 public sealed class ContextKnowledgeClient(IHttpClientFactory clients, IConfiguration config)
 {
-    public sealed record MaterialEvidence(string ContentHash, DateTimeOffset KnownAt, Guid[] CompanyIds);
-    public sealed record SearchHit(Guid CompanyId);
-    public sealed record SearchHits(SearchHit[] Hits);
+    public Task<Result<MaterialEvidence>> MaterialAsync(string materialId, string versionId)
+    {
+        return SendAsync<MaterialEvidence>(HttpMethod.Get, $"material-versions/{Uri.EscapeDataString(materialId)}/{Uri.EscapeDataString(versionId)}", null, default);
+    }
 
-    public Task<Result<MaterialEvidence>> Material(string materialId, string versionId) =>
-        Send<MaterialEvidence>(HttpMethod.Get, $"material-versions/{Uri.EscapeDataString(materialId)}/{Uri.EscapeDataString(versionId)}", null, default);
+    public Task<Result<SearchHits>> SearchAsync(
+        string query,
+        DateTimeOffset asOf,
+        CancellationToken ct)
+    {
+        return SendAsync<SearchHits>(HttpMethod.Post, "search", new { query, asOf, limit = 48 }, ct);
+    }
 
-    public Task<Result<SearchHits>> Search(string query, DateTimeOffset asOf, CancellationToken ct) =>
-        Send<SearchHits>(HttpMethod.Post, "search", new { query, asOf, limit = 48 }, ct);
-
-    private async Task<Result<T>> Send<T>(HttpMethod method, string path, object? body, CancellationToken ct)
+    private async Task<Result<T>> SendAsync<T>(
+        HttpMethod method,
+        string path,
+        object? body,
+        CancellationToken ct)
     {
         var baseUrl = config["ContextService:BaseUrl"];
         var secret = config["ContextService:InternalSecret"] ?? config["Internal:Secret"];
@@ -31,7 +39,10 @@ public sealed class ContextKnowledgeClient(IHttpClientFactory clients, IConfigur
 
         using var request = new HttpRequestMessage(method, new Uri(address, "context-service/internal/" + path));
         request.Headers.Add("X-Internal-Secret", secret);
-        if (body is not null) request.Content = JsonContent.Create(body);
+        if (body is not null)
+        {
+            request.Content = JsonContent.Create(body);
+        }
         try
         {
             using var client = clients.CreateClient(nameof(ContextKnowledgeClient));

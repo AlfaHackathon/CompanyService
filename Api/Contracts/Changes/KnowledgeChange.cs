@@ -1,8 +1,11 @@
-
 namespace Api.Contracts.Changes;
 
-public sealed record KnowledgeChange(long Sequence, string Category, string EntityId, string VersionId,
-    DateTimeOffset KnownAt, Guid[] CompanyIds);
-
-// Written in the SAME transaction as canonical material/knowledge writes. The
-// consumer advances its own durable cursor only after enqueueing durable work.
+public class KnowledgeChange
+{
+    public long Sequence { get; set; }
+    public string Category { get; set; } = string.Empty;
+    public string EntityId { get; set; } = string.Empty;
+    public string VersionId { get; set; } = string.Empty;
+    public DateTimeOffset KnownAt { get; set; }
+    public Guid[] CompanyIds { get; set; } = [];
+}

@@ -1,9 +1,9 @@
-using Api.Models;
+using AlfaHackaton.Result;
+using Api.Contracts.Industries;
 
 namespace Api.Services.Interfaces;
 
-/// <summary>Справочник отраслей (ОКВЭД).</summary>
 public interface IIndustryService
 {
-    Task<List<Industry>> GetAllAsync(CancellationToken ct = default);
+    Task<Result<List<IndustryResponse>>> GetAllAsync(CancellationToken ct = default);
 }

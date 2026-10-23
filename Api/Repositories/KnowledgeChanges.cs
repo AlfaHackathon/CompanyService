@@ -32,12 +32,23 @@ public sealed class KnowledgeChanges(IDapperContext context)
         return new((await context.ListOrEmpty<ChangeRow>(new QueryObject(KnowledgeSql.ReadNextChange, new
         {
             after
-        }))).Select(row => new KnowledgeChange(row.Sequence,
-                row.Category,
-                row.EntityId,
-                row.VersionId,
-                DateTimeOffset.Parse(row.KnownAt, System.Globalization.CultureInfo.InvariantCulture),
-                JsonSerializer.Deserialize<Guid[]>(row.CompanyIds)!)).ToArray(),
+        }))).Select(row => new KnowledgeChange
+            {
+                Sequence = row.Sequence,
+                Category = row.Category,
+                EntityId = row.EntityId,
+                VersionId = row.VersionId,
+                KnownAt = DateTimeOffset.Parse(row.KnownAt, System.Globalization.CultureInfo.InvariantCulture),
+                CompanyIds = JsonSerializer.Deserialize<Guid[]>(row.CompanyIds)!
+            }).ToArray(),
             null);
+    }
+
+    public async Task<Result<KnowledgeChangesResponse>> GetChangesAsync(long after)
+    {
+        var result = await Read(after);
+        return result.Error is { } error
+            ? new(error)
+            : new(new KnowledgeChangesResponse { Changes = result.Content! }, null);
     }
 }
