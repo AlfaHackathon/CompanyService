@@ -4,6 +4,7 @@ using AlfaHackaton.Result;
 using AlfaHackaton.Result.Errors;
 using Api.Contracts.Invites;
 using Api.Models;
+using Api.Repositories;
 using Api.Repositories.Interfaces;
 using Api.Services.Interfaces;
 
@@ -82,19 +83,19 @@ public class InviteService(IInviteRepository invites, ICompanyRepository compani
         {
             return new(Failure("Инвайт истёк", HttpStatusCode.Gone));
         }
-        if (await companies.GetByUserAsync(userId, ct) is not null)
+        var joined = await companies.TryJoinAsync(invite.CompanyId, userId,
+            async () => await invites.TryUseAsync(code, userId) is not null, ct);
+        if (joined == JoinCompanyOutcome.AlreadyMember)
         {
             return new(Failure("Пользователь уже состоит в компании", HttpStatusCode.Conflict));
         }
-        var used = await invites.TryUseAsync(code, userId);
-        if (used is null)
+        if (joined == JoinCompanyOutcome.InviteUnavailable)
         {
             return new(Failure("Инвайт уже использован", HttpStatusCode.Conflict));
         }
-        await companies.AddMemberAsync(used.CompanyId, userId, ct);
-        var company = await companies.GetByIdAsync(used.CompanyId, ct);
+        var company = await companies.GetByIdAsync(invite.CompanyId, ct);
         await invites.DeleteAsync(code);
-        return new(new UsedInviteResponse { CompanyId = used.CompanyId, CompanyName = company?.Name }, null);
+        return new(new UsedInviteResponse { CompanyId = invite.CompanyId, CompanyName = company?.Name }, null);
     }
 
     private static string GenerateCode()

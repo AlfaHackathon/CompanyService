@@ -143,11 +143,7 @@ public class CompanyService(ICompanyRepository companies, IIndustryRepository in
 
     private async Task<Result<Company>> CreateAsync(CreateCompanyInternalRequest request, CancellationToken ct)
     {
-        if (await companies.GetByUserAsync(request.CreatorId, ct) is not null)
-        {
-            return new(new Error("Пользователь уже состоит в компании", ErrorSource.Client, ErrorType.CorruptedInfo) { HttpStatusCode = HttpStatusCode.Conflict });
-        }
-        var created = await companies.CreateAsync(new Company
+        var created = await companies.TryCreateAsync(new Company
         {
             Id = Guid.NewGuid(),
             Name = request.Name,
@@ -158,7 +154,10 @@ public class CompanyService(ICompanyRepository companies, IIndustryRepository in
             CountOfEmployees = request.CountOfEmployees,
             CreatedAt = DateTime.UtcNow
         }, ct);
-        await companies.AddMemberAsync(created.Id, request.CreatorId, ct);
+        if (created is null)
+        {
+            return new(new Error("Пользователь уже состоит в компании", ErrorSource.Client, ErrorType.CorruptedInfo) { HttpStatusCode = HttpStatusCode.Conflict });
+        }
         if (request.IndustryCodes is { Count: > 0 })
         {
             // Сохраняем прежнюю семантику создания: неизвестные коды не мешают созданию компании.
