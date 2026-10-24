@@ -19,9 +19,10 @@ public class CompanyRepository(IDapperContext context) : ICompanyRepository
         return await context.FirstOrDefault<Company>(new QueryObject(CompanySql.GetByUser, new { userId }));
     }
 
-    public async Task<Company> CreateAsync(Company company, CancellationToken ct = default)
+    public async Task<Company?> TryCreateAsync(Company company, CancellationToken ct = default)
     {
-        return await context.CommandWithResponse<Company>(new QueryObject(CompanySql.Create, new
+        using var transaction = context.BeginTransaction();
+        var created = await transaction.CommandWithResponse<Company>(new QueryObject(CompanySql.Create, new
         {
             id = company.Id,
             name = company.Name,
@@ -34,6 +35,13 @@ public class CompanyRepository(IDapperContext context) : ICompanyRepository
             bank_profile_id = company.BankProfileId,
             created_at = company.CreatedAt
         }));
+        if (!await transaction.CommandWithResponse<bool>(new QueryObject(CompanySql.ReserveMember,
+                new { companyId = company.Id, userId = company.CreatorId, joinedAt = DateTime.UtcNow })))
+        {
+            return null;
+        }
+        transaction.Commit();
+        return created;
     }
 
     public async Task<bool> UpdateAsync(Guid id, UpdateCompanyRequest patch, CancellationToken ct = default)
@@ -78,8 +86,23 @@ public class CompanyRepository(IDapperContext context) : ICompanyRepository
         return await context.ListOrEmpty<Company>(new QueryObject(CompanySql.GetChildren, new { parentId }));
     }
 
-    public async Task AddMemberAsync(Guid companyId, Guid userId, CancellationToken ct = default)
+    public async Task<JoinCompanyOutcome> TryJoinAsync(
+        Guid companyId,
+        Guid userId,
+        Func<Task<bool>> tryClaimInvite,
+        CancellationToken ct = default)
     {
-        await context.Command(new QueryObject(CompanySql.AddMember, new { companyId, userId, joinedAt = DateTime.UtcNow }));
+        using var transaction = context.BeginTransaction();
+        if (!await transaction.CommandWithResponse<bool>(new QueryObject(CompanySql.ReserveMember,
+                new { companyId, userId, joinedAt = DateTime.UtcNow })))
+        {
+            return JoinCompanyOutcome.AlreadyMember;
+        }
+        if (!await tryClaimInvite())
+        {
+            return JoinCompanyOutcome.InviteUnavailable;
+        }
+        transaction.Commit();
+        return JoinCompanyOutcome.Joined;
     }
 }

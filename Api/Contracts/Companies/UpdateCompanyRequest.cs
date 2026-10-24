@@ -1,10 +1,11 @@
 namespace Api.Contracts.Companies;
 
-/// <summary>PATCH /companies/me — частичное обновление (null = не трогаем).</summary>
-public record UpdateCompanyRequest(
-    string? Name,
-    string? Inn,
-    string? Region,
-    decimal? Revenue,
-    int? CountOfEmployees,
-    string? BankProfileId);
+public class UpdateCompanyRequest
+{
+    public string? Name { get; set; }
+    public string? Inn { get; set; }
+    public string? Region { get; set; }
+    public decimal? Revenue { get; set; }
+    public int? CountOfEmployees { get; set; }
+    public string? BankProfileId { get; set; }
+}

@@ -1,13 +1,15 @@
-using Api.Contracts;
-using Api.Models;
+using AlfaHackaton.Result;
+using Api.Contracts.Industries;
 using Api.Repositories.Interfaces;
 using Api.Services.Interfaces;
 
 namespace Api.Services;
 
-/// <summary>Справочник отраслей (ОКВЭД).</summary>
 public class IndustryService(IIndustryRepository repository) : IIndustryService
 {
-    public Task<List<Industry>> GetAllAsync(CancellationToken ct = default)
-        => repository.GetAllAsync(ct);
+    public async Task<Result<List<IndustryResponse>>> GetAllAsync(CancellationToken ct = default)
+    {
+        var industries = await repository.GetAllAsync(ct);
+        return new(industries.Select(industry => new IndustryResponse { Id = industry.Id, Code = industry.Code, Name = industry.Name }).ToList(), null);
+    }
 }

@@ -1,3 +1,8 @@
 namespace Api.Contracts.Companies;
 
-public record MemberResponse(Guid UserId, DateTime JoinedAt, bool IsCreator);
+public class MemberResponse
+{
+    public Guid UserId { get; set; }
+    public DateTime JoinedAt { get; set; }
+    public bool IsCreator { get; set; }
+}

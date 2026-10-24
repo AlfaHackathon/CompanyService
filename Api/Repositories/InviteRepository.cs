@@ -45,6 +45,11 @@ public class InviteRepository(IMongoContext mongo) : IInviteRepository
         return await Collection.FindOneAndUpdateAsync(filter, update);
     }
 
+    public async Task DeleteAsync(string code)
+    {
+        await Collection.DeleteOneAsync(i => i.Code == code);
+    }
+
     public async Task InsertExpiredForTestAsync(string code, Guid companyId) =>
         await Collection.InsertOneAsync(new InviteDocument
         {
