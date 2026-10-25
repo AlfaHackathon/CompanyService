@@ -25,7 +25,7 @@ public interface ICompanyMaterialsClient
 public sealed class ContextCompanyMaterialsClient(IHttpClientFactory clients, IConfiguration configuration) : ICompanyMaterialsClient
 {
     public Task<ScopedCompanyMaterial> Get(string materialId, string versionId, CancellationToken ct) =>
-        Send<ScopedCompanyMaterial>(HttpMethod.Get, $"material-versions/{Uri.EscapeDataString(materialId)}/{Uri.EscapeDataString(versionId)}", null, ct);
+        Send<ScopedCompanyMaterial>(HttpMethod.Get, $"material-versions/{Uri.EscapeDataString(materialId)}/{Uri.EscapeDataString(versionId)}", null, ct, exactRead: true);
     public Task<ScopedCompanyMaterial> Save(CompanyMaterialWrite payload, CancellationToken ct) =>
         Send<ScopedCompanyMaterial>(HttpMethod.Post, "material-versions", payload, ct);
     public Task<CompanyMaterialsResponse> List(Guid company, string? bankProfile, DateTimeOffset asOf, int limit, string? cursor, CancellationToken ct)
@@ -36,7 +36,7 @@ public sealed class ContextCompanyMaterialsClient(IHttpClientFactory clients, IC
         return Send<CompanyMaterialsResponse>(HttpMethod.Get, $"companies/{company:D}/materials?{query}", null, ct);
     }
 
-    private async Task<T> Send<T>(HttpMethod method, string path, object? body, CancellationToken ct)
+    private async Task<T> Send<T>(HttpMethod method, string path, object? body, CancellationToken ct, bool exactRead = false)
     {
         var baseUrl = configuration["ContextService:BaseUrl"];
         var secret = configuration["ContextService:InternalSecret"] ?? configuration["Internal:Secret"];
@@ -53,7 +53,8 @@ public sealed class ContextCompanyMaterialsClient(IHttpClientFactory clients, IC
         try
         {
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
-            if (response.StatusCode == HttpStatusCode.NotFound) throw PublicKnowledgeError.Missing();
+            if (response.StatusCode == HttpStatusCode.NotFound)
+                throw exactRead ? PublicKnowledgeError.Missing() : PublicKnowledgeError.Unavailable();
             if (response.StatusCode == HttpStatusCode.Conflict)
                 throw new PublicKnowledgeError(HttpStatusCode.Conflict, "The immutable company material conflicts with an existing version.");
             if (response.StatusCode == HttpStatusCode.BadRequest && method == HttpMethod.Get)

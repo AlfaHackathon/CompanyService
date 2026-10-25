@@ -52,6 +52,16 @@ public sealed class ContextCompanyMaterialsClientTests
         });
         Assert.Empty((await Client(handler).List(company, "U_96", at, 20, "opaque", default)).Items);
     }
+    [Fact]
+    public async Task MissingCatalogDependencyIsUnavailableWhileMissingExactVersionIsNotFound()
+    {
+        var handler = new Handler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)));
+        var client = Client(handler);
+        var catalog = await Assert.ThrowsAsync<PublicKnowledgeError>(() => client.List(Guid.NewGuid(), null, DateTimeOffset.UtcNow, 20, null, default));
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, catalog.Status);
+        var exact = await Assert.ThrowsAsync<PublicKnowledgeError>(() => client.Get("own", "v1", default));
+        Assert.Equal(HttpStatusCode.NotFound, exact.Status);
+    }
     [Theory]
     [InlineData("http://user:password@context.fixture")]
     [InlineData("http://context.fixture?private=true")]
