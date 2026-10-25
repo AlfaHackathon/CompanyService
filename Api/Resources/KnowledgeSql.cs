@@ -12,5 +12,6 @@ public static class KnowledgeSql
     public static string InsertKnowledge => Manager.GetString(nameof(InsertKnowledge)) ?? throw new InvalidOperationException("Missing KnowledgeSql.InsertKnowledge");
     public static string LatestKnowledge => Manager.GetString(nameof(LatestKnowledge)) ?? throw new InvalidOperationException("Missing KnowledgeSql.LatestKnowledge");
     public static string AllKnowledge => Manager.GetString(nameof(AllKnowledge)) ?? throw new InvalidOperationException("Missing KnowledgeSql.AllKnowledge");
+    public static string FindKnowledgeAt => Manager.GetString(nameof(FindKnowledgeAt)) ?? throw new InvalidOperationException("Missing KnowledgeSql.FindKnowledgeAt");
     public static string WriteLock => Manager.GetString(nameof(WriteLock)) ?? throw new InvalidOperationException("Missing KnowledgeSql.WriteLock");
 }

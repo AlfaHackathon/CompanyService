@@ -8,6 +8,7 @@ using Api.Repositories;
 using Api.Repositories.Interfaces;
 using Api.Services;
 using Api.Services.Interfaces;
+using Api.Services.PublicKnowledge;
 using Api.Settings;
 using Dapper;
 
@@ -43,6 +44,12 @@ builder.Services.AddSingleton<KnowledgeStore>();
 builder.Services.AddSingleton<KnowledgeChanges>();
 builder.Services.AddSingleton<KnowledgeService>();
 builder.Services.AddSingleton<CompanySelectionService>();
+builder.Services.AddHttpClient(nameof(ContextCompanyMaterialsClient), client => client.Timeout = TimeSpan.FromSeconds(15))
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
+builder.Services.AddSingleton<ICompanyMaterialsClient, ContextCompanyMaterialsClient>();
+builder.Services.AddSingleton<IPublicCompanyProfiles, PublicCompanyProfiles>();
+builder.Services.AddSingleton<IKnowledgeOperationStore, KnowledgeOperationStore>();
+builder.Services.AddSingleton<PublicKnowledgeService>();
 
 // Префикс маршрутов: /company-service/... (JWT валидируется на auth-gateway)
 builder.Services.AddControllers(options =>
@@ -53,6 +60,7 @@ builder.Services.AddAuthenticationWithoutValidation();
 
 // Swagger с поддержкой Bearer-авторизации
 builder.Services.AddSwaggerAuth();
+builder.Services.Configure<Swashbuckle.AspNetCore.SwaggerGen.SwaggerGenOptions>(options => options.OperationFilter<CompanyKnowledgeOperationFilter>());
 
 var app = builder.Build();
 
@@ -73,6 +81,16 @@ if (app.Configuration.GetValue<bool>("Swagger:Enabled"))
     });
 }
 
+// Prevent intermediary caching even when authentication/model binding rejects a facade read.
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/company-service/companies/me/knowledge") ||
+        context.Request.Path.StartsWithSegments("/company-service/companies/me/materials"))
+    {
+        context.Response.Headers.CacheControl = "private, no-store";
+    }
+    await next(context);
+});
 app.UseAuthentication();
 app.UseAuthorization();
 

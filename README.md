@@ -128,3 +128,7 @@ fallback на его прежнее хранилище профилей нет.
 Если профили уже записывались в прежний ContextService, перед переключением
 нужно явно перенести их через этот API с исходными ревизиями и источниками;
 автоматического межсервисного копирования или удаления данных нет.
+
+## Public company knowledge
+
+Five current-company profile/material operations, creator-only writes, durable idempotency receipts and native gates are documented in [docs/public-company-knowledge.md](docs/public-company-knowledge.md). This source change is not a deployment; the internal Context list dependency must be deployed separately first.
