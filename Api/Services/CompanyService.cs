@@ -129,7 +129,13 @@ public class CompanyService(ICompanyRepository companies, IIndustryRepository in
         {
             return new(MissingMembership());
         }
-        return new(new CompanyMembershipResponse { Id = company.Id, Name = company.Name, BankProfileId = company.BankProfileId }, null);
+        return new(new CompanyMembershipResponse
+        {
+            Id = company.Id,
+            Name = company.Name,
+            CreatorId = company.CreatorId,
+            BankProfileId = company.BankProfileId
+        }, null);
     }
 
     public async Task<Result<List<Guid>>> GetMemberIdsAsync(Guid companyId, CancellationToken ct = default)
