@@ -71,4 +71,11 @@ public sealed class KnowledgeStore(IDapperContext context)
     }
 
     public async Task<T[]> List<T>(string category, DateTimeOffset asOf, bool latestOnly = true) => (await context.ListOrEmpty<string>(new QueryObject(latestOnly ? KnowledgeSql.LatestKnowledge : KnowledgeSql.AllKnowledge, new { c = category, t = asOf.UtcTicks }))).Select(json => JsonSerializer.Deserialize<T>(json, KnowledgeJson.Options)!).ToArray();
+
+    public async Task<T?> Get<T>(string category, string entityId, DateTimeOffset asOf) where T : class
+    {
+        var json = await context.FirstOrDefault<string>(new QueryObject(KnowledgeSql.FindKnowledgeAt,
+            new { c = category, e = entityId, t = asOf.UtcTicks }));
+        return json is null ? null : JsonSerializer.Deserialize<T>(json, KnowledgeJson.Options);
+    }
 }
