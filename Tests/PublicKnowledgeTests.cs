@@ -8,6 +8,7 @@ using Api.Controllers;
 using Api.Models;
 using Api.Repositories;
 using Api.Repositories.Interfaces;
+using Api.Services;
 using Api.Services.PublicKnowledge;
 using Xunit;
 using Microsoft.AspNetCore.Http;
@@ -70,6 +71,61 @@ public sealed partial class PublicKnowledgeTests
         f.Materials.Stored[("own", "v1")] = f.Materials.Stored[("own", "v1")] with { BankProfileIds = ["U_97"] };
         Assert.Equal(HttpStatusCode.NotFound, (await f.Service.GetKnowledge(Actor, default)).Error!.HttpStatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await f.Service.PutKnowledge(Actor, Input(), "profile-1", default)).Error!.HttpStatusCode);
+    }
+    [Fact]
+    public async Task DocumentaryProfileEditsRetainCapturedDeclaredFieldsAndTheirExactSource()
+    {
+        var f = Setup();
+        var reference = new SourceReference { MaterialId = "declared", VersionId = "snapshot-1", ContentHash = Hash };
+        f.Materials.Stored[(reference.MaterialId, reference.VersionId)] = f.Materials.Stored[("own", "v1")] with
+        {
+            MaterialId = reference.MaterialId,
+            VersionId = reference.VersionId,
+            SourceId = DeclaredCompanyCaptureService.SourceId
+        };
+        var declared = new DeclaredCompanyProfile("Declared region", ["C"], new("123.45", null, null), null, [reference]);
+        f.Profiles.Current = new CompanyProfile { CompanyId = CompanyId, DeclaredProfile = declared, SourceRefs = [reference] };
+        var result = await f.Service.PutKnowledge(Actor, Input(), "retain-declared", default);
+        Assert.Null(result.Error);
+        Assert.Equal(JsonSerializer.Serialize(declared, KnowledgeJson.Options), JsonSerializer.Serialize(f.Profiles.Current!.DeclaredProfile, KnowledgeJson.Options));
+        Assert.Contains(f.Profiles.Current.SourceRefs, r => r.MaterialId == reference.MaterialId && r.VersionId == reference.VersionId && r.ContentHash == Hash);
+        Assert.Equal(["45.11"], f.Profiles.Current.IndustryCodes);
+        Assert.DoesNotContain("declaredProfile", JsonSerializer.Serialize(result.Content, KnowledgeJson.Options));
+    }
+    [Fact]
+    public async Task PublicProfileWriteCannotEraseCaptureReservedAfterItsInitialProfileRead()
+    {
+        var f = Setup();
+        var declared = new DeclaredCompanyProfile("Concurrent declared region", ["C"], null, null, []);
+        f.Operations.BeforeReserve = () => f.Profiles.Current = new CompanyProfile
+        {
+            CompanyId = CompanyId,
+            RevisionId = "concurrent-capture",
+            KnownAt = DateTimeOffset.UtcNow.AddTicks(-1),
+            DeclaredProfile = declared
+        };
+        var result = await f.Service.PutKnowledge(Actor, Input(), "raced-public-write", default);
+        Assert.Equal(HttpStatusCode.Conflict, result.Error!.HttpStatusCode);
+        Assert.Equal("concurrent-capture", f.Profiles.Current!.RevisionId);
+        Assert.Same(declared, f.Profiles.Current.DeclaredProfile);
+        Assert.Equal(0, f.Profiles.Writes);
+    }
+    [Fact]
+    public async Task PreviouslyFrozenRawPublicProfileOperationRemainsReplayable()
+    {
+        var f = Setup();
+        var initial = (await f.Service.PutKnowledge(Actor, Input(), "legacy-key", default)).Content!;
+        var reservation = Assert.Single(f.Operations.Items);
+        f.Operations.Items[reservation.Key] = reservation.Value with
+        {
+            Payload = JsonSerializer.Serialize(f.Profiles.Current, KnowledgeJson.Options),
+            Completed = false
+        };
+        f.Profiles.Current = null;
+        var resumed = await f.Service.PutKnowledge(Actor, Input(), "legacy-key", default);
+        Assert.Null(resumed.Error);
+        Assert.Equal(initial.RevisionId, resumed.Content!.RevisionId);
+        Assert.True(f.Operations.Items[reservation.Key].Completed);
     }
     [Fact]
     public async Task MissingMembershipAndNonCreatorCannotReadOrWriteBeyondCurrentScope()
@@ -187,6 +243,7 @@ public sealed partial class PublicKnowledgeTests
     internal sealed class Operations : IKnowledgeOperationStore
     {
         public readonly Dictionary<string, KnowledgeOperation> Items = new();
+        public Action? BeforeReserve;
         private static string Id(Guid actor, Guid company, string operation, string key) => $"{actor}/{company}/{operation}/{key}";
         public Task<KnowledgeOperation?> Find(Guid actor, Guid company, string operation, string key, string hash)
         {
@@ -196,6 +253,7 @@ public sealed partial class PublicKnowledgeTests
         }
         public async Task<KnowledgeOperation> Reserve(Guid actor, Guid company, string operation, string key, string hash, Func<DateTimeOffset, string> freeze)
         {
+            BeforeReserve?.Invoke();
             var existing = await Find(actor, company, operation, key, hash);
             if (existing is not null) return existing;
             var at = DateTimeOffset.UtcNow;
@@ -242,17 +300,24 @@ public sealed partial class PublicKnowledgeTests
         public int Writes;
         public Task<CompanyProfile> Get(Guid company, DateTimeOffset asOf) => Task.FromResult(Current ?? throw PublicKnowledgeError.Missing());
         public Task<CompanyProfile> Save(CompanyProfile profile) { Writes++; Current = profile; return Task.FromResult(profile); }
+        public Task<CompanyProfile> SaveIfCurrent(CompanyProfile profile, string? expectedRevisionId)
+        {
+            if (Current?.RevisionId != profile.RevisionId && Current?.RevisionId != expectedRevisionId)
+                throw new PublicKnowledgeError(HttpStatusCode.Conflict, "Knowledge changed");
+            return Save(profile);
+        }
     }
     internal sealed class Companies : ICompanyRepository
     {
         public Company? Current;
         public int Reads;
+        public List<Industry> Industries = [];
         public Task<Company?> GetByUserAsync(Guid user, CancellationToken ct = default) { Reads++; return Task.FromResult(Current); }
-        public Task<Company?> GetByIdAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<Company?> GetByIdAsync(Guid id, CancellationToken ct = default) { Reads++; return Task.FromResult(Current?.Id == id ? Current : null); }
         public Task<Company?> TryCreateAsync(Company company, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<bool> UpdateAsync(Guid id, UpdateCompanyRequest patch, CancellationToken ct = default) => throw new NotSupportedException();
         public Task SetIndustriesAsync(Guid company, IReadOnlyCollection<Guid> industries, CancellationToken ct = default) => throw new NotSupportedException();
-        public Task<List<Industry>> GetIndustriesAsync(Guid company, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<List<Industry>> GetIndustriesAsync(Guid company, CancellationToken ct = default) => Task.FromResult(Industries);
         public Task<List<CompanyMember>> GetMembersAsync(Guid company, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<List<Company>> GetChildrenAsync(Guid parent, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<JoinCompanyOutcome> TryJoinAsync(Guid company, Guid user, Func<Task<bool>> claim, CancellationToken ct = default) => throw new NotSupportedException();

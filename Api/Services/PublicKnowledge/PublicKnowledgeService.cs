@@ -18,6 +18,7 @@ public sealed class PublicKnowledgeService(ICompanyRepository companies, IPublic
     ICompanyMaterialsClient materials, IKnowledgeOperationStore operations)
 {
     private sealed record MaterialCursor(Guid CompanyId, string? BankProfileId, DateTimeOffset AsOf, string Inner);
+    private sealed record ProfileWrite(CompanyProfile Profile, string? ExpectedRevisionId);
     private static string Json<T>(T value) => JsonSerializer.Serialize(value, KnowledgeJson.Options);
     private static T Decode<T>(string value) => JsonSerializer.Deserialize<T>(value, KnowledgeJson.Options) ?? throw PublicKnowledgeError.Unavailable();
     private static string Hash<T>(T value) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(Json(value))));
@@ -118,6 +119,9 @@ public sealed class PublicKnowledgeService(ICompanyRepository companies, IPublic
         var operation = await operations.Find(actor, company.Id, "knowledge", key!, hash);
         if (operation is null)
         {
+            CompanyProfile? previous = null;
+            try { previous = await profiles.Get(company.Id, DateTimeOffset.UtcNow); }
+            catch (PublicKnowledgeError error) when (error.Status == HttpStatusCode.NotFound) { }
             var refs = new List<SourceReference>();
             foreach (var input in normalized.SourceRefs)
             {
@@ -125,7 +129,13 @@ public sealed class PublicKnowledgeService(ICompanyRepository companies, IPublic
                 MaterialScope(source, company, input.MaterialId, input.VersionId, DateTimeOffset.UtcNow);
                 refs.Add(new() { MaterialId = source.MaterialId, VersionId = source.VersionId, ContentHash = source.ContentHash });
             }
-            operation = await operations.Reserve(actor, company.Id, "knowledge", key!, hash, time => Json(new CompanyProfile
+            if (previous?.DeclaredProfile is { } declared)
+            {
+                if (previous.CompanyId != company.Id || !DeclaredCompanyProfilePolicy.Valid(previous)) throw PublicKnowledgeError.Unavailable();
+                refs.AddRange(declared.SourceRefs);
+            }
+            if (refs.Count > 64) throw PublicKnowledgeError.Invalid();
+            operation = await operations.Reserve(actor, company.Id, "knowledge", key!, hash, time => Json(new ProfileWrite(new CompanyProfile
             {
                 CompanyId = company.Id,
                 Name = company.Name,
@@ -135,18 +145,22 @@ public sealed class PublicKnowledgeService(ICompanyRepository companies, IPublic
                 Description = normalized.Description,
                 IndustryCodes = normalized.IndustryCodes,
                 Exposures = normalized.Exposures,
-                SourceRefs = refs.ToArray()
-            }));
+                SourceRefs = refs.DistinctBy(r => (r.MaterialId, r.VersionId, r.ContentHash)).ToArray(),
+                DeclaredProfile = previous?.DeclaredProfile
+            }, previous?.RevisionId)));
         }
         // A concurrent insert loser always uses the winning frozen payload, not local IDs/time.
-        var profile = Decode<CompanyProfile>(operation.Payload);
+        // Previously reserved raw profile payloads remain replayable after this additive journal format.
+        using var payload = JsonDocument.Parse(operation.Payload);
+        var frozen = payload.RootElement.TryGetProperty("profile", out _) ? Decode<ProfileWrite>(operation.Payload) : null;
+        var profile = frozen?.Profile ?? Decode<CompanyProfile>(operation.Payload);
         if (profile.BankProfileId != company.BankProfileId) throw new PublicKnowledgeError(HttpStatusCode.Conflict, "The company bank bridge changed after reservation.");
         await ValidateProfile(profile, company, ct);
         await Recheck(actor, company, ct);
         if (!operation.Completed)
         {
-            var saved = await profiles.Save(profile);
-            if (Json(saved) != operation.Payload) throw PublicKnowledgeError.Unavailable();
+            var saved = frozen is null ? await profiles.Save(profile) : await profiles.SaveIfCurrent(profile, frozen.ExpectedRevisionId);
+            if (Json(saved) != Json(profile)) throw PublicKnowledgeError.Unavailable();
             await operations.Complete(operation);
         }
         return Public(profile);
