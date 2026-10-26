@@ -63,7 +63,7 @@ public sealed class DeclaredCompanyCaptureTests
         Assert.Null(result.Error);
         Assert.InRange(profile.KnownAt, before, DateTimeOffset.UtcNow);
         Assert.Equal("Synthetic region A", profile.DeclaredProfile!.Region);
-        Assert.Equal(["C"], profile.DeclaredProfile.IndustrySections);
+        Assert.Equal(["C"], Assert.IsType<string[]>(profile.DeclaredProfile.IndustrySections));
         Assert.Equal("9999999999999999.99", profile.DeclaredProfile.Revenue!.Amount);
         Assert.Null(profile.DeclaredProfile.Revenue.Currency);
         Assert.Null(profile.DeclaredProfile.Revenue.Period);
