@@ -52,6 +52,8 @@ builder.Services.AddSingleton<IKnowledgeOperationStore, KnowledgeOperationStore>
 builder.Services.AddSingleton<PublicKnowledgeService>();
 builder.Services.AddSingleton<ICompanyBankProfiles, CompanyBankProfileStore>();
 builder.Services.AddSingleton<CompanyBankProfileService>();
+builder.Services.AddSingleton<IPaymentRows, PaymentRowStore>();
+builder.Services.AddSingleton<PaymentActivityService>();
 
 // Префикс маршрутов: /company-service/... (JWT валидируется на auth-gateway)
 builder.Services.AddControllers(options =>
