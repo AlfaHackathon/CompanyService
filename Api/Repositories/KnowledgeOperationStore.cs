@@ -35,7 +35,12 @@ public sealed class KnowledgeOperationStore(IDapperContext context) : IKnowledge
         using var transaction = context.BeginTransaction();
         await transaction.Command(new QueryObject(PublicKnowledgeSql.ReservationLock));
         var parameters = new { actor = actor.ToString("D"), company = company.ToString("D"), operation, key };
-        var existing = await transaction.FirstOrDefault<Row>(new QueryObject(PublicKnowledgeSql.FindOperation, parameters));
+        // DapperContext 1.1 transactions expose QueryFirstAsync-backed commands, not optional reads.
+        var exists = await transaction.CommandWithResponse<bool>(new QueryObject(
+            $"SELECT EXISTS ({PublicKnowledgeSql.FindOperation})", parameters));
+        var existing = exists
+            ? await transaction.CommandWithResponse<Row>(new QueryObject(PublicKnowledgeSql.FindOperation, parameters))
+            : null;
         if (existing is not null)
         {
             if (existing.RequestHash != requestHash)
