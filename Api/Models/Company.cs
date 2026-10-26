@@ -1,3 +1,5 @@
+using Api.Contracts.Companies;
+
 namespace Api.Models;
 
 /// <summary>
@@ -23,4 +25,6 @@ public class Company
     public string? BankProfileId { get; set; }
 
     public required DateTime CreatedAt { get; set; }
+    // Read projection from the canonical profile owned by this Company UUID; never an auth grant.
+    public CompanyBankData? BankData { get; set; }
 }

@@ -107,8 +107,8 @@ public class CompanyService(ICompanyRepository companies, IIndustryRepository in
         return new(new CompanyGroupResponse
         {
             Current = await ToResponseAsync(company, userId, ct),
-            Parent = parent is null ? null : await ToResponseAsync(parent, userId, ct),
-            Children = await Task.WhenAll(children.Select(child => ToResponseAsync(child, userId, ct)))
+            Parent = parent is null ? null : await ToResponseAsync(parent, userId, ct, includeBankData: false),
+            Children = await Task.WhenAll(children.Select(child => ToResponseAsync(child, userId, ct, includeBankData: false)))
         }, null);
     }
 
@@ -189,7 +189,8 @@ public class CompanyService(ICompanyRepository companies, IIndustryRepository in
     private async Task<CompanyResponse> ToResponseAsync(
         Company company,
         Guid requesterId,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool includeBankData = true)
     {
         var found = await companies.GetIndustriesAsync(company.Id, ct);
         return new CompanyResponse
@@ -205,7 +206,8 @@ public class CompanyService(ICompanyRepository companies, IIndustryRepository in
             BankProfileId = company.BankProfileId,
             CreatedAt = company.CreatedAt,
             IsCreator = company.CreatorId == requesterId,
-            Industries = found.Select(industry => new IndustryResponse { Id = industry.Id, Code = industry.Code, Name = industry.Name }).ToList()
+            Industries = found.Select(industry => new IndustryResponse { Id = industry.Id, Code = industry.Code, Name = industry.Name }).ToList(),
+            BankData = includeBankData ? company.BankData : null
         };
     }
 
