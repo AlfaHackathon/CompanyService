@@ -59,16 +59,18 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <data name="GetById" xml:space="preserve">
-    <value>SELECT id, name, inn, creator_id, parent_company_id, region,
-revenue, count_of_employees, bank_profile_id, created_at
-FROM companies
-WHERE id = @id</value>
+    <value>SELECT c.id, c.name, c.inn, c.creator_id, c.parent_company_id, c.region,
+c.revenue, c.count_of_employees, c.bank_profile_id, c.created_at, bank.bank_data
+FROM companies c
+LEFT JOIN LATERAL (SELECT bank_data FROM company_bank_profiles WHERE company_id=c.id ORDER BY known_ticks DESC LIMIT 1) bank ON TRUE
+WHERE c.id = @id</value>
   </data>
   <data name="GetByUser" xml:space="preserve">
     <value>SELECT c.id, c.name, c.inn, c.creator_id, c.parent_company_id, c.region,
-c.revenue, c.count_of_employees, c.bank_profile_id, c.created_at
+c.revenue, c.count_of_employees, c.bank_profile_id, c.created_at, bank.bank_data
 FROM companies c
 JOIN company_members m ON m.company_id = c.id
+LEFT JOIN LATERAL (SELECT bank_data FROM company_bank_profiles WHERE company_id=c.id ORDER BY known_ticks DESC LIMIT 1) bank ON TRUE
 WHERE m.user_id = @userId</value>
   </data>
   <data name="Create" xml:space="preserve">
@@ -111,11 +113,12 @@ WHERE company_id = @companyId
 ORDER BY joined_at</value>
   </data>
   <data name="GetChildren" xml:space="preserve">
-    <value>SELECT id, name, inn, creator_id, parent_company_id, region,
-revenue, count_of_employees, bank_profile_id, created_at
-FROM companies
-WHERE parent_company_id = @parentId
-ORDER BY name</value>
+    <value>SELECT c.id, c.name, c.inn, c.creator_id, c.parent_company_id, c.region,
+c.revenue, c.count_of_employees, c.bank_profile_id, c.created_at, bank.bank_data
+FROM companies c
+LEFT JOIN LATERAL (SELECT bank_data FROM company_bank_profiles WHERE company_id=c.id ORDER BY known_ticks DESC LIMIT 1) bank ON TRUE
+WHERE c.parent_company_id = @parentId
+ORDER BY c.name</value>
   </data>
   <data name="ReserveMember" xml:space="preserve">
     <value>WITH inserted AS (

@@ -4,11 +4,14 @@ using Api.Contracts.Companies;
 using Api.Models;
 using Api.Repositories.Interfaces;
 using Api.Resources;
+using Api.Settings;
+using Dapper;
 
 namespace Api.Repositories;
 
 public class CompanyRepository(IDapperContext context) : ICompanyRepository
 {
+    static CompanyRepository() => SqlMapper.AddTypeHandler(new CompanyBankDataTypeHandler());
     public async Task<Company?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
         return await context.FirstOrDefault<Company>(new QueryObject(CompanySql.GetById, new { id }));

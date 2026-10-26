@@ -16,4 +16,5 @@ public class CompanyResponse
     public DateTime CreatedAt { get; set; }
     public bool IsCreator { get; set; }
     public List<IndustryResponse> Industries { get; set; } = [];
+    public CompanyBankData? BankData { get; set; }
 }
