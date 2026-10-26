@@ -13,9 +13,11 @@ using Npgsql;
 
 namespace Api.Repositories;
 
+public sealed record KnowledgeWriteExpectation(string? RevisionId);
+
 public sealed class KnowledgeStore(IDapperContext context)
 {
-    public async Task<Result<T>> Save<T>(string category, string id, string revision, DateTimeOffset knownAt, T value)
+    public async Task<Result<T>> Save<T>(string category, string id, string revision, DateTimeOffset knownAt, T value, KnowledgeWriteExpectation? expectation = null)
     {
         var json = JsonSerializer.Serialize(value, KnowledgeJson.Options);
         var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
@@ -36,6 +38,14 @@ public sealed class KnowledgeStore(IDapperContext context)
 
             transaction.Commit();
             return new(value, null);
+        }
+
+        if (expectation is not null)
+        {
+            var previous = await transaction.CommandWithResponse<string>(new QueryObject(KnowledgeSql.FindLatestRevision,
+                new { c = category, e = id }));
+            if (previous != (expectation.RevisionId ?? ""))
+                return new(new Error("Company knowledge changed before capture. Start a new captureId.", ErrorSource.Client, ErrorType.CorruptedInfo) { HttpStatusCode = HttpStatusCode.Conflict });
         }
 
         try

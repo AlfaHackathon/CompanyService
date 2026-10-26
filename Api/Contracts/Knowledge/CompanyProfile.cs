@@ -16,4 +16,6 @@ public class CompanyProfile
     public DateTimeOffset KnownAt { get; set; }
     [JsonRequired]
     public SourceReference[] SourceRefs { get; set; } = [];
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DeclaredCompanyProfile? DeclaredProfile { get; set; }
 }

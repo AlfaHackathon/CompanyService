@@ -52,4 +52,7 @@ ORDER BY entity_id</value>
   <data name="WriteLock">
     <value>SET LOCAL lock_timeout = '5s'; SELECT pg_advisory_xact_lock(319264383)</value>
   </data>
+  <data name="FindLatestRevision" xml:space="preserve">
+    <value>SELECT COALESCE((SELECT revision_id FROM company_knowledge_revisions WHERE category=@c AND entity_id=@e ORDER BY known_ticks DESC LIMIT 1), '')</value>
+  </data>
 </root>

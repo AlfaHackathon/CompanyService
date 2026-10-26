@@ -50,6 +50,7 @@ builder.Services.AddSingleton<ICompanyMaterialsClient, ContextCompanyMaterialsCl
 builder.Services.AddSingleton<IPublicCompanyProfiles, PublicCompanyProfiles>();
 builder.Services.AddSingleton<IKnowledgeOperationStore, KnowledgeOperationStore>();
 builder.Services.AddSingleton<PublicKnowledgeService>();
+builder.Services.AddSingleton<DeclaredCompanyCaptureService>();
 
 // Префикс маршрутов: /company-service/... (JWT валидируется на auth-gateway)
 builder.Services.AddControllers(options =>

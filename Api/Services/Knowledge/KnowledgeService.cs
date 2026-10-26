@@ -20,7 +20,7 @@ public sealed class KnowledgeService(
             string.IsNullOrWhiteSpace(p.Description) ||
             p.IndustryCodes is null ||
             p.Exposures is null ||
-            p.Description.Length > 16000)
+            p.Description.Length > 16000 || p.SourceRefs is null || !DeclaredCompanyProfilePolicy.Valid(p))
         {
             return new(new Error("Company identity, name, bounded description and feature arrays are required.", ErrorSource.Client, ErrorType.CorruptedInfo) { HttpStatusCode = HttpStatusCode.BadRequest });
         }
@@ -28,6 +28,14 @@ public sealed class KnowledgeService(
         if ((await ValidateAsync(p.RevisionId, p.KnownAt, p.SourceRefs, p.CompanyId)).Error is { } companyEvidenceError)
         {
             return new(companyEvidenceError);
+        }
+        if (p.DeclaredProfile is { } declared)
+        {
+            var reference = declared.SourceRefs[0];
+            var evidence = await materials.MaterialAsync(reference.MaterialId, reference.VersionId);
+            if (evidence.Error is { } declaredEvidenceError) return new(declaredEvidenceError);
+            if (!DeclaredCompanyProfilePolicy.Matches(p, evidence.Content!))
+                return new(new Error("Declared company fields must match their exact operational snapshot.", ErrorSource.Client, ErrorType.CorruptedInfo) { HttpStatusCode = HttpStatusCode.UnprocessableEntity });
         }
         p.KnownAt = p.KnownAt.ToUniversalTime();
         return await store.Save("company", p.CompanyId.ToString("D"), p.RevisionId, p.KnownAt, p);
