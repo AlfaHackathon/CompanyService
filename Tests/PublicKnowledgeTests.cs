@@ -13,7 +13,7 @@ using Xunit;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
-public sealed class PublicKnowledgeTests
+public sealed partial class PublicKnowledgeTests
 {
     private static readonly Guid Actor = Guid.Parse("11111111-1111-4111-8111-111111111111");
     private static readonly Guid CompanyId = Guid.Parse("22222222-2222-4222-8222-222222222222");
